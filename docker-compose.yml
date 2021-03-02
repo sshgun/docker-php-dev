@@ -1,0 +1,30 @@
+version: '3'
+services:
+  web:
+    image: nginx:latest
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf
+      - ./www:/var/www
+  php:
+    build:
+      context: ./PHPImage
+      args:
+        USER_ID: 1000 
+        GROUP_ID: 1000
+    container_name: php-fpm
+    volumes:
+      - ./www:/var/www
+  mysql:
+    image: mariadb:latest
+    environment:
+        MYSQL_ROOT_PASSWORD: 'root'
+        MYSQL_ROOT_USER: 'root'
+        MYSQL_PASSWORD: 'root'
+    volumes:
+      - mysqldata:/var/lib/mysql
+    ports:
+      - 3306:3306
+volumes:
+  mysqldata: {}    
