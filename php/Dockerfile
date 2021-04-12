@@ -1,8 +1,22 @@
 FROM php:7.4-fpm
 
+ARG USER
 ARG USER_ID
+ARG USER_GID
 
-RUN apt-get update -y
+
+EXPOSE 3030
+
+# Clean up
+RUN apt-get remove -y git && apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# ADD resolv.conf /etc/resolv.conf
+ADD cacert.pem /usr/local/share/ca-certificates/cacert.pem
+RUN chmod 644 /usr/local/share/ca-certificates/cacert.pem && update-ca-certificates
+
+# RUN apt-get -o Acquire::Check-Valid-Until=false update
+# RUN apt-get install -y apt-transport-https
+RUN apt-get -y update
 RUN apt-get -y install gcc make autoconf libc-dev pkg-config libzip-dev
 
 RUN apt-get install -y --no-install-recommends \
@@ -27,7 +41,8 @@ RUN apt-get install -y --no-install-recommends \
 	libmhash2 libmhash-dev libc-client-dev libkrb5-dev libssh2-1-dev \
 	unzip libpcre3 libpcre3-dev \
 	poppler-utils ghostscript libmagickwand-6.q16-dev libsnmp-dev libedit-dev libreadline6-dev libsodium-dev \
-	freetds-bin freetds-dev freetds-common libct4 libsybdb5 tdsodbc libreadline-dev librecode-dev libpspell-dev libonig-dev
+	freetds-bin freetds-dev freetds-common libct4 libsybdb5 tdsodbc libreadline-dev librecode-dev libpspell-dev libonig-dev \
+	supervisor
 
 # fix for docker-php-ext-install pdo_dblib
 # https://stackoverflow.com/questions/43617752/docker-php-and-freetds-cannot-find-freetds-in-know-installation-directories
@@ -46,6 +61,7 @@ RUN docker-php-ext-install pdo pdo_dblib pdo_mysql pdo_pgsql pdo_sqlite pgsql ph
 RUN docker-php-ext-install readline
 RUN docker-php-ext-install session shmop simplexml soap sockets sodium
 RUN docker-php-ext-install sysvmsg sysvsem sysvshm
+
 # RUN docker-php-ext-install snmp
 
 # fix for docker-php-ext-install xmlreader
@@ -80,23 +96,13 @@ RUN pecl install xdebug && docker-php-ext-enable xdebug
 # RUN yes "" | pecl install msgpack && \
 #	docker-php-ext-enable msgpack
 
+
+
 # install APCu
-RUN pecl install apcu && \
-	docker-php-ext-enable apcu --ini-name docker-php-ext-10-apcu.ini
+# RUN pecl install apcu && \
+#	docker-php-ext-enable apcu --ini-name docker-php-ext-10-apcu.ini
 
 RUN apt-get update -y && apt-get install -y apt-transport-https locales gnupg
-
-# install MSSQL support and ODBC driver
-# RUN curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - && \
-# 	curl https://packages.microsoft.com/config/debian/8/prod.list > /etc/apt/sources.list.d/mssql-release.list && \
-# 	export DEBIAN_FRONTEND=noninteractive && apt-get update -y && \
-# 	ACCEPT_EULA=Y apt-get install -y msodbcsql unixodbc-dev
-# RUN set -xe \
-# 	&& pecl install pdo_sqlsrv \
-# 	&& docker-php-ext-enable pdo_sqlsrv \
-# 	&& apt-get purge -y unixodbc-dev && apt-get autoremove -y && apt-get clean
-
-# RUN docker-php-ext-configure spl && docker-php-ext-install spl
 
 # install GD
 RUN docker-php-ext-configure gd \
@@ -111,6 +117,8 @@ RUN docker-php-ext-configure gd \
 RUN echo "en_US.UTF-8 UTF-8" > /etc/locale.gen && locale-gen
 ENV LANG='en_US.UTF-8' LANGUAGE='en_US:en' LC_ALL='en_US.UTF-8'
 
+
+
 #--------------------------------------------------------------------------
 # Final Touches
 #--------------------------------------------------------------------------
@@ -119,12 +127,17 @@ ENV LANG='en_US.UTF-8' LANGUAGE='en_US:en' LC_ALL='en_US.UTF-8'
 RUN apt-get -y install libfcgi0ldbl vim htop iotop lsof cron mariadb-client redis-tools
 
 # Set default work directory
-# ADD ./PHPImage/scripts/* /usr/local/bin/
+# ADD ./scripts/* /usr/local/bin/
 RUN chmod +x  /usr/local/bin/*
 
 # Add default configuration files
-# ADD configs/php.ini /usr/local/etc/php/
+
+ADD php.ini /usr/local/etc/php/
+ADD xdebug.ini /usr/local/etc/php/conf.d/docker-php-ext-xdebug.ini
 ADD www.conf /usr/local/etc/php-fpm.d/
+
+COPY --from=composer /usr/bin/composer /usr/bin/composer
+
 
 # Health check
 RUN echo '#!/bin/bash' > /healthcheck && \
@@ -134,5 +147,7 @@ RUN echo '#!/bin/bash' > /healthcheck && \
 # Clean up
 RUN apt-get remove -y git && apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-USER ${USER_ID}
+RUN groupadd --gid "${USER_GID}" "${USER}" && \
+	useradd --uid ${USER_ID} --gid ${USER_GID} --shell /bin/bash ${USER}
+
 WORKDIR /
